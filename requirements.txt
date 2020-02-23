@@ -1,0 +1,4 @@
+torch==1.4.0
+torchaudio==0.4.0
+librosa==0.7.1
+tqdm==4.40.0
