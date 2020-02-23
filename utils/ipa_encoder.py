@@ -30,8 +30,8 @@ class IPAEncoder:
 
     def save_vocab(self):
         self.logger.info(f'Saving vocabulary to {self.vocab_path}')
-        with open(self.vocab_path, 'w') as fid:
-            json.dump(self.vocab, fid)
+        with open(self.vocab_path, 'w', encoding='utf8') as fid:
+            json.dump(self.vocab, fid, ensure_ascii=False)
 
     def encode(self, s, lang='en', plain_text=False, **kwargs):
         if plain_text:

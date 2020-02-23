@@ -1,4 +1,5 @@
 import csv
+import json
 from argparse import ArgumentParser
 from tqdm.auto import tqdm
 from pathlib import Path
@@ -59,8 +60,9 @@ def encode_data(data_files, encoder, **ipa_kwargs):
 
 
 def serialize_encoded_data(encoded_data, output_path, subset='train'):
-    logger.info(f'Serializing data to {encode_data}')
-    with open(Path(output_path) / f'{subset}.tsv', 'w') as fid:
+    filename = str(Path(output_path) / f'{subset}.tsv')
+    logger.info(f'Serializing data to {filename}')
+    with open(filename, 'w') as fid:
         writer = csv.writer(fid, dialect='excel-tab')
         for row in encoded_data:
             writer.writerow(row)
