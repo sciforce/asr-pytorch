@@ -1,0 +1,18 @@
+{
+    "n_mfcc": 13,
+    "sample_rate": 16000,
+    "n_fft": 480,
+    "hop_length": 160,
+    "use_deltas": true,
+    "normalize_features": true,
+    "embedding_dim": 256,
+    "n_convolutions": 2,
+    "kernel_size": 5,
+    "stride": 2,
+    "n_head": 8,
+    "num_encoder_layers": 6,
+    "num_decoder_layers": 6,
+    "dim_feedforward": 2048,
+    "dropout": 0.1,
+    "positional_encoding": true
+}
