@@ -19,8 +19,19 @@ ModelParams = namedtuple('ModelParams',
                           'num_encoder_layers',
                           'dim_feedforward',
                           'dropout',
-                          'positional_encoding'])
+                          'positional_encoding',
+                          'max_src_len',
+                          'max_tgt_len'])
+TrainParams = namedtuple('TrainParams',
+                         ['epochs',
+                          'batch_size',
+                          'learning_rate',
+                          'weight_decay',
+                          'clip_grad_thresh',
+                          'val_step'
+                          ])
 MODEL_CONFIG_NAME = 'model_config.json'
+TRAIN_CONFIG_NAME = 'train_config.json'
 
 
 def read_config_json(model_path, config_name):
@@ -39,3 +50,8 @@ def read_config_json(model_path, config_name):
 def read_model_config(model_path):
     params_dict = read_config_json(model_path, MODEL_CONFIG_NAME)
     return ModelParams(**params_dict)
+
+
+def read_train_config(model_path):
+    params_dict = read_config_json(model_path, TRAIN_CONFIG_NAME)
+    return TrainParams(**params_dict)
