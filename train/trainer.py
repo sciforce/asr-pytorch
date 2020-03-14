@@ -36,7 +36,9 @@ def validate(model, val_loader, device, loss_fn):
         # TODO: Calculate edit distance instead of crossentropy at validation
         x, x_lengths, targets, target_lengths = [x.to(device) for x in batch]
         outputs = model(x, x_lengths, targets, target_lengths)
-        losses.append(loss_fn(outputs, targets).item())
+        loss = loss_fn(outputs[:, :-1, :].transpose(1, 2),
+                       targets[:, 1:])  # Remove SOS character from the beginning of target sequence
+        losses.append(loss.item())
     loss = torch.cat(losses).mean()
     model.train()
     return loss

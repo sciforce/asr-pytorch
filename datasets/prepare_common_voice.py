@@ -36,7 +36,7 @@ def collect_data(directory, langs_list=None, subset='train', max_num_files=None)
             _ = next(transcript_reader)
             for transcript_line in transcript_reader:
                 _, media_name, label = transcript_line[:3]
-                filename = lang_dir / 'clips' / f'{media_name}
+                filename = lang_dir / 'clips' / media_name
 
                 data_files.append((str(filename), label, lang))
                 if max_num_files is not None and len(data_files) >= max_num_files:
