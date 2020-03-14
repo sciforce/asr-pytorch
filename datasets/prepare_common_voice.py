@@ -24,7 +24,7 @@ def collect_data(directory, langs_list=None, subset='train', max_num_files=None)
     langs = [d for d in Path(directory).iterdir()
              if d.is_dir()]
     if langs_list is not None:
-        langs = [d for d in langs_list if d.name() in langs_list]
+        langs = [d for d in langs if d.name in langs_list]
 
     for lang_dir in langs:
         lang = lang_dir.name[:2]
