@@ -23,19 +23,17 @@ class MFCCLayer(torch.nn.Module):
         self.norm = torch.nn.BatchNorm1d(num_features)
 
     def forward(self, signals, lengths):
-        # trim signals tensor for memory saving purposes if we split batch into smaller batches
-        signals = signals[:, :lengths.max()]
         mel_features = self.mfcc(signals)
         device = lengths.device
         lengths_frames = librosa.samples_to_frames(lengths.cpu().numpy(),
                                                    hop_length=self.hop_length,
                                                    n_fft=self.n_fft)
         lengths_frames = torch.Tensor(lengths_frames).to(device).int()
-        if self.params.use_deltas:
+        if self.use_deltas:
             delta = self.deltas(mel_features)
             delta2 = self.deltas(delta)
             mel_features = torch.cat((mel_features, delta, delta2), dim=-2)
-        if self.params.normalize_features:
+        if self.normalize_features:
             mel_features = self.norm(mel_features)
         return mel_features, lengths_frames
 
@@ -49,7 +47,7 @@ class PositionalEncoding(torch.nn.Module):
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)[:, :d_model // 2]
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
 
@@ -84,8 +82,10 @@ class InputsEncoder(torch.nn.Module):
                  n_convolutions, dropout):
         super(InputsEncoder, self).__init__()
         self.dropout = dropout
-
+        self.n_convolutions = n_convolutions
         self.convolutions = torch.nn.ModuleList()
+        self.kernel_size = kernel_size
+        self.stride = stride
         self.convolutions.append(
             torch.nn.Sequential(
                 ConvNorm(ninputs, conv_channels,
@@ -109,19 +109,20 @@ class InputsEncoder(torch.nn.Module):
     def forward(self, x, input_lengths, max_length=None):
         for conv in self.convolutions:
             x = torch.nn.functional.dropout(torch.nn.functional.relu(conv(x)),
-                                            self.dropout_prob, self.training)
+                                            self.dropout, self.training)
         x.transpose_(1, 2)   # batch x input_channels x time -> batch x time x input_channels
 
         conv_length = input_lengths
         total_length = max_length
-        for _ in range(self.params.n_convolutions):
-            conv_length = torch.div((conv_length + 2 * int((self.params.kernel_size - 1) / 2)
-                                    - (self.params.kernel_size - 1) - 1), self.params.stride) + 1
+        for _ in range(self.n_convolutions):
+            conv_length = torch.div((conv_length + 2 * int((self.kernel_size - 1) / 2)
+                                    - (self.kernel_size - 1) - 1), self.stride) + 1
             if total_length is not None:
-                total_length = (total_length + 2 * int((self.params.kernel_size - 1) / 2)
-                                - (self.params.kernel_size - 1) - 1) // self.params.stride + 1
+                total_length = (total_length + 2 * int((self.kernel_size - 1) / 2)
+                                - (self.kernel_size - 1) - 1) // self.stride + 1
         x.transpose_(1, 2)    # batch x time x input_channels -> batch x input_channels x time
         return x, conv_length, total_length
+
 
 class LinearNorm(torch.nn.Module):
     def __init__(self, in_dim, out_dim, bias=True, w_init_gain='linear'):

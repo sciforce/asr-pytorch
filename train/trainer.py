@@ -6,6 +6,7 @@ from utils.config_utils import read_model_config, read_train_config
 from model.asr_model import ASRTransformerModel
 from utils.dataset_utils import SpeechDataset, get_collate_fn, load_dataset
 from utils.logger import get_logger
+from utils.ipa_encoder import IPAEncoder
 
 logger = get_logger('asr.train')
 
@@ -46,8 +47,22 @@ def get_model(model_params, n_outputs, device):
     return model
 
 
-def do_train(train_loader, val_loader, device, model_params, train_params, n_outputs,
+def get_loader(data, sample_rate, batch_size, shuffle,
+               max_len_src, max_len_tgt):
+    dataset = SpeechDataset(data, sample_rate)
+    loader = torch.utils.data.DataLoader(dataset, batch_size, shuffle,
+                                         collate_fn=get_collate_fn(max_len_src, max_len_tgt))
+    return loader
+
+
+def do_train(train_data, val_data, device, n_outputs,
              checkpoint_dir, start_checkpoint):
+    model_params = read_model_config(checkpoint_dir)
+    train_params = read_train_config(checkpoint_dir)
+    train_loader = get_loader(train_data, model_params.sample_rate, train_params.batch_size,
+                              True, model_params.max_src_len, model_params.max_tgt_len)
+    val_loader = get_loader(val_data, model_params.sample_rate, train_params.batch_size,
+                            False, model_params.max_src_len, model_params.max_tgt_len)
     model = get_model(model_params, n_outputs, device)
     model.train()
     # TODO: add loss for binary features
@@ -71,7 +86,8 @@ def do_train(train_loader, val_loader, device, model_params, train_params, n_out
             optimizer.zero_grad()
             x, x_lengths, targets, target_lengths = [x.to(device) for x in batch]
             outputs = model(x, x_lengths, targets, target_lengths)
-            loss = loss_fn(outputs, targets)
+            loss = loss_fn(outputs[:, :-1, :].transpose(1, 2),
+                           targets[:, 1:])  # Remove SOS character from the beginning of target sequence
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(),
                                            max_norm=train_params.clip_grad_thresh)
@@ -81,6 +97,29 @@ def do_train(train_loader, val_loader, device, model_params, train_params, n_out
                 save_checkpoint(model, optimizer, global_step,
                                 str(Path(checkpoint_dir) / f'checkpoint_{global_step}'))
             pbar.set_description('Step {}: loss {:2.4f}, val_loss {:2.4f}'
-                                 .format(global_step, loss.item(), val_loss))
+                                 .format(global_step, loss.item(), val_loss or 0.0))
             global_step += 1
         epoch += 1
+
+
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('--data_dir', type=str, required=True,
+                        help='Path to directory with CSV files.')
+    parser.add_argument('--model_dir', type=str, required=True,
+                        help='Path to directory with checkpoints.')
+    parser.add_argument('--start_checkpoint', type=str, default=None,
+                        help='Checkpoint to start training from.')
+    args = parser.parse_args()
+    train_data = load_dataset(Path(args.data_dir), subset='train')
+    val_data = load_dataset(Path(args.data_dir), subset='dev')
+    if torch.cuda.is_available():
+        device = 'cuda'
+        logger.debug('Using CUDA')
+    else:
+        device = 'cpu'
+
+    encoder = IPAEncoder(args.data_dir)
+    do_train(train_data, val_data, device, len(encoder.vocab),
+             args.model_dir, args.start_checkpoint)

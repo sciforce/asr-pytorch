@@ -10,7 +10,7 @@ from utils.logger import get_logger
 logger = get_logger('asr.train')
 
 
-def collect_data(directory, langs_list=None, subset='train'):
+def collect_data(directory, langs_list=None, subset='train', max_num_files=None):
     """Traverses directory collecting input and target files.
 
     Args:
@@ -36,9 +36,11 @@ def collect_data(directory, langs_list=None, subset='train'):
             _ = next(transcript_reader)
             for transcript_line in transcript_reader:
                 _, media_name, label = transcript_line[:3]
-                filename = lang_dir / 'clips' / f'{media_name}.mp3'
+                filename = lang_dir / 'clips' / f'{media_name}
 
                 data_files.append((str(filename), label, lang))
+                if max_num_files is not None and len(data_files) >= max_num_files:
+                    return data_files
     return data_files
 
 
@@ -86,12 +88,15 @@ def main():
                         help='Keep stress and gemination symbols sticked to a phone symbol.')
     parser.add_argument('--not_remove_lang_markers', action='store_false', dest='remove_lang_markers',
                         help='Keep language markers returned by eSpeak-ng.')
+    parser.add_argument('--max_samples_count', type=int, default=None,
+                        help='Maximal number of audio files to use. Use all by default.')
     parser.add_argument('--plain_text', action='store_true',
+
                         help='Use characteres as targets instead of IPA.')
     args = parser.parse_args()
 
     encoder = IPAEncoder(args.output_dir, logger)
-    data_files = collect_data(args.dataset_dir, args.langs, args.subset)
+    data_files = collect_data(args.dataset_dir, args.langs, args.subset, args.max_samples_count)
     encoded_data = encode_data(data_files, encoder, plain_text=args.plain_text,
                                remove_semi_stress=args.remove_semi_stress,
                                split_all_diphthongs=args.split_all_diphthongs,

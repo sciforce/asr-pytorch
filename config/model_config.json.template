@@ -14,5 +14,7 @@
     "num_decoder_layers": 6,
     "dim_feedforward": 2048,
     "dropout": 0.1,
-    "positional_encoding": true
+    "positional_encoding": true,
+    "max_src_len": null,
+    "max_tgt_len": null
 }

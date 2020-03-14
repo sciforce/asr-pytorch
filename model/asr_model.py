@@ -12,9 +12,11 @@ class ASRTransformerModel(torch.nn.Module):
         max_len_src: maximal source sequence length, samples
         max_tgt_len: maximal target sequence lenght, characters
         """
-        self.parms = params
+        super(ASRTransformerModel, self).__init__()
+        self.params = params
         self.max_len_src = max_len_src
         self.max_len_tgt = max_len_src
+        self.n_outputs = n_outputs
         self.mfcc = MFCCLayer(params.sample_rate, params.n_mfcc,
                               params.n_fft, params.hop_length,
                               params.use_deltas, params.normalize_features)
@@ -22,7 +24,7 @@ class ASRTransformerModel(torch.nn.Module):
         if params.use_deltas:
             num_features *= 3
         if self.params.positional_encoding:
-            self.positional_encoder = PositionalEncoding(num_features, params.dropout,
+            self.positional_encoder = PositionalEncoding(params.embedding_dim, params.dropout,
                                                          max_len_src)
         if params.n_convolutions > 0:
             self.inputs_encoder = InputsEncoder(num_features, params.embedding_dim,
@@ -30,13 +32,13 @@ class ASRTransformerModel(torch.nn.Module):
                                                 params.n_convolutions, params.dropout)
             num_features = params.embedding_dim
         transformer_encoder_layer = torch.nn.TransformerEncoderLayer(d_model=num_features,
-                                                                     n_head=params.n_head,
+                                                                     nhead=params.n_head,
                                                                      dim_feedforward=params.dim_feedforward,
                                                                      dropout=params.dropout)
         self.transformer_encoder = torch.nn.TransformerEncoder(transformer_encoder_layer,
                                                                params.num_encoder_layers)
         transformer_decoder_layer = torch.nn.TransformerDecoderLayer(d_model=num_features,
-                                                                     n_head=params.n_head,
+                                                                     nhead=params.n_head,
                                                                      dim_feedforward=params.dim_feedforward,
                                                                      dropout=params.dropout)
         self.transformer_decoder = torch.nn.TransformerDecoder(transformer_decoder_layer,
@@ -44,15 +46,21 @@ class ASRTransformerModel(torch.nn.Module):
         self.embedding_layer = LinearNorm(n_outputs, num_features)
         self.projection_layer = LinearNorm(num_features, n_outputs)
 
+    def _generate_square_subsequent_mask(self, sz):
+        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
     def _run_encoder(self, x, x_lengths):
         features, feat_lengths = self.mfcc(x, x_lengths)
         max_len_src = self.max_len_src
         if self.params.n_convolutions > 0:
             features, feat_lengths, max_len_src = self.inputs_encoder(features, feat_lengths, max_len_src)
+        max_len_src = min(max_len_src, features.size(-1))
         # Features: batch x n_features x time -> time x batch x n_features
         features.transpose_(1, 2).transpose_(0, 1)
-        src_key_padding_mask = self._get_mask_from_lengths(feat_lengths, max_len=max_len_src)
-        src_mask = self.transformer.generate_subsequent_mask(features.size(0)).to(x.device)
+        src_key_padding_mask = get_mask_from_lengths(feat_lengths, max_len=max_len_src)
+        src_mask = self._generate_square_subsequent_mask(features.size(0)).to(x.device)
         if self.params.positional_encoding:
             features = self.positional_encoder(features)
         memory = self.transformer_encoder(features,
@@ -71,13 +79,16 @@ class ASRTransformerModel(torch.nn.Module):
         Returns:
         outputs: tensor of size [max_target_sequence_length x batch x target_dim]
         """
-        tgt_key_padding_mask = self._get_mask_from_lengths(target_lengths, max_len=self.max_len_tgt)
-        tgt_mask = self.transformer.generate_subsequent_mask(targets.size(0)).to(targets.device)
-        embs = self.embedding_layer(targets)
+        max_len_tgt = min(self.max_len_tgt, targets.size(0))
+        tgt_key_padding_mask = get_mask_from_lengths(target_lengths, max_len=max_len_tgt)
+        tgt_mask = self._generate_square_subsequent_mask(targets.size(0)).to(targets.device)
+        embs = self.embedding_layer(targets.transpose(0, 1).float()).transpose(0, 1)
         output = self.transformer_decoder(embs, memory, tgt_mask=tgt_mask,
-                                          memory_mask=memory_mask,
+                                        #   memory_mask=memory_mask,
                                           tgt_key_padding_mask=tgt_key_padding_mask,
                                           memory_key_padding_mask=memory_key_padding_mask)
+        # Output: time x batch x target_dim -> batch x time x target_dim
+        output.transpose_(0, 1)
         output = self.projection_layer(output)
         return output
 
@@ -91,13 +102,12 @@ class ASRTransformerModel(torch.nn.Module):
         Returns:
         outputs: tensor of size [batch x max_target_sequence_length x target_dim]
         """
+        targets = torch.nn.functional.one_hot(targets, self.n_outputs)
         # Targets: batch x time x target_dim -> time x batch x target_dim
         targets.transpose_(0, 1)
         memory, memory_mask, memory_key_padding_mask = self._run_encoder(x, x_lengths)
         output = self._decoder_step(memory, targets, target_lengths, memory_mask,
                                     memory_key_padding_mask)
-        # Output: time x batch x target_dim -> batch x time x target_dim
-        output.transpose_(0, 1)
         return output
 
     def inference(self, x, x_lengths, partial_targets, partial_target_lengths, eos=None):

@@ -1,7 +1,7 @@
 import torch
 
 
-def get_mask_from_lengths(self, lengths, max_len=None, inv=True):
+def get_mask_from_lengths(lengths, max_len=None, inv=True):
     if max_len is None:
         max_len = torch.max(lengths).item()
     ids = torch.arange(0, max_len, dtype=torch.int32, device=lengths.device)
