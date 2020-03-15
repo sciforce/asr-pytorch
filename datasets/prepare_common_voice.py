@@ -36,7 +36,7 @@ def collect_data(directory, langs_list=None, subset='train', max_num_files=None)
             _ = next(transcript_reader)
             for transcript_line in transcript_reader:
                 _, media_name, label = transcript_line[:3]
-                if not '.mp3' in media_name:
+                if '.mp3' not in media_name:
                     media_name += '.mp3'
                 filename = lang_dir / 'clips' / media_name
 
