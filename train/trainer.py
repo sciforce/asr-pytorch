@@ -63,7 +63,7 @@ def do_train(train_data, val_data, device, n_outputs,
     train_params = read_train_config(checkpoint_dir)
     train_loader = get_loader(train_data, model_params.sample_rate, train_params.batch_size,
                               True, model_params.max_src_len, model_params.max_tgt_len)
-    val_loader = get_loader(val_data, model_params.sample_rate, train_params.batch_size,
+    val_loader = get_loader(val_data, model_params.sample_rate, train_params.val_batch_size,
                             False, model_params.max_src_len, model_params.max_tgt_len)
     model = get_model(model_params, n_outputs, device)
     model.train()

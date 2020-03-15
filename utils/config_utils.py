@@ -29,7 +29,8 @@ TrainParams = namedtuple('TrainParams',
                           'learning_rate',
                           'weight_decay',
                           'clip_grad_thresh',
-                          'val_step'
+                          'val_step',
+                          'val_batch_size'
                           ])
 MODEL_CONFIG_NAME = 'model_config.json'
 TRAIN_CONFIG_NAME = 'train_config.json'
