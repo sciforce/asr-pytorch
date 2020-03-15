@@ -39,7 +39,7 @@ def validate(model, val_loader, device, loss_fn):
         loss = loss_fn(outputs[:, :-1, :].transpose(1, 2),
                        targets[:, 1:])  # Remove SOS character from the beginning of target sequence
         losses.append(loss.item())
-    loss = torch.cat(losses).mean()
+    loss = torch.Tensor(losses).mean()
     model.train()
     return loss
 
