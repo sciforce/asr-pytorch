@@ -6,6 +6,7 @@ import ast
 import warnings
 from pathlib import Path
 from utils.logger import get_logger
+from utils.ipa_encoder import EOS_ID
 
 logger = get_logger('asr.train')
 warnings.filterwarnings('ignore')
@@ -43,7 +44,8 @@ def get_collate_fn(max_len_src=None, max_len_tgt=None):
         if max_len_tgt is None:
             max_len_tgt = target_lengths.max().item()
         features = torch.nn.utils.rnn.pad_sequence([audio for audio, _ in batch], batch_first=True)
-        targets = torch.nn.utils.rnn.pad_sequence([targets for _, targets in batch], batch_first=True).to(torch.int64)
+        targets = torch.nn.utils.rnn.pad_sequence([targets for _, targets in batch], batch_first=True,
+                                                  padding_value=EOS_ID).to(torch.int64)
         return features, feature_lengths, targets, target_lengths
     return collate_fn
 

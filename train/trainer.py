@@ -7,6 +7,7 @@ from model.asr_model import ASRTransformerModel
 from utils.dataset_utils import SpeechDataset, get_collate_fn, load_dataset
 from utils.logger import get_logger
 from utils.ipa_encoder import IPAEncoder
+from utils.model_utils import get_mask_from_lengths
 
 logger = get_logger('asr.train')
 
@@ -29,15 +30,24 @@ def load_checkpoint(model, optimizer, checkpoint_path):
     return model, optimizer, global_step
 
 
-def validate(model, val_loader, device, loss_fn):
+# TODO: add loss for binary features
+def get_loss(outputs, targets, lengths, max_len=None):
+    mask = get_mask_from_lengths(lengths, max_len)
+    # Remove SOS character from the beginning of target sequence
+    loss = torch.nn.functional.cross_entropy(outputs[:, :-1, :].transpose(1, 2),
+                                             targets[:, 1:], reduction='none')
+    loss = loss.masked_fill(mask[:, 1:], 0).sum(dim=-1) / (lengths - 1)
+    return loss.mean()
+
+
+def validate(model, val_loader, device):
     model.eval()
     losses = []
     for batch in val_loader:
         # TODO: Calculate edit distance instead of crossentropy at validation
         x, x_lengths, targets, target_lengths = [x.to(device) for x in batch]
         outputs = model(x, x_lengths, targets, target_lengths)
-        loss = loss_fn(outputs[:, :-1, :].transpose(1, 2),
-                       targets[:, 1:])  # Remove SOS character from the beginning of target sequence
+        loss = get_loss(outputs, targets, target_lengths)
         losses.append(loss.item())
     loss = torch.Tensor(losses).mean()
     model.train()
@@ -67,8 +77,6 @@ def do_train(train_data, val_data, device, n_outputs,
                             False, model_params.max_src_len, model_params.max_tgt_len)
     model = get_model(model_params, n_outputs, device)
     model.train()
-    # TODO: add loss for binary features
-    loss_fn = torch.nn.CrossEntropyLoss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=train_params.learning_rate,
                                  weight_decay=train_params.weight_decay)
@@ -88,8 +96,7 @@ def do_train(train_data, val_data, device, n_outputs,
             optimizer.zero_grad()
             x, x_lengths, targets, target_lengths = [x.to(device) for x in batch]
             outputs = model(x, x_lengths, targets, target_lengths)
-            loss = loss_fn(outputs[:, :-1, :].transpose(1, 2),
-                           targets[:, 1:])  # Remove SOS character from the beginning of target sequence
+            loss = get_loss(outputs, targets, target_lengths, model_params.max_tgt_len)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(),
                                            max_norm=train_params.clip_grad_thresh)

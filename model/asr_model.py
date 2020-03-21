@@ -43,7 +43,7 @@ class ASRTransformerModel(torch.nn.Module):
                                                                      dropout=params.dropout)
         self.transformer_decoder = torch.nn.TransformerDecoder(transformer_decoder_layer,
                                                                params.num_decoder_layers)
-        self.embedding_layer = LinearNorm(n_outputs, num_features)
+        self.embedding_layer = torch.nn.Embedding(n_outputs, num_features)
         self.projection_layer = LinearNorm(num_features, n_outputs)
 
     def _generate_square_subsequent_mask(self, sz):
@@ -82,9 +82,7 @@ class ASRTransformerModel(torch.nn.Module):
         max_len_tgt = min(self.max_len_tgt, targets.size(0))
         tgt_key_padding_mask = get_mask_from_lengths(target_lengths, max_len=max_len_tgt)
         tgt_mask = self._generate_square_subsequent_mask(targets.size(0)).to(targets.device)
-        embs = self.embedding_layer(targets.transpose(0, 1).float()).transpose(0, 1)
-        output = self.transformer_decoder(embs, memory, tgt_mask=tgt_mask,
-                                        #   memory_mask=memory_mask,
+        output = self.transformer_decoder(targets, memory, tgt_mask=tgt_mask,
                                           tgt_key_padding_mask=tgt_key_padding_mask,
                                           memory_key_padding_mask=memory_key_padding_mask)
         # Output: time x batch x target_dim -> batch x time x target_dim
@@ -102,7 +100,7 @@ class ASRTransformerModel(torch.nn.Module):
         Returns:
         outputs: tensor of size [batch x max_target_sequence_length x target_dim]
         """
-        targets = torch.nn.functional.one_hot(targets, self.n_outputs)
+        targets = self.embedding_layer(targets)
         # Targets: batch x time x target_dim -> time x batch x target_dim
         targets.transpose_(0, 1)
         memory, memory_mask, memory_key_padding_mask = self._run_encoder(x, x_lengths)
