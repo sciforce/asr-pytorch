@@ -25,7 +25,7 @@ def load_checkpoint(model, optimizer, checkpoint_path):
     logger.debug(f'Loading checkpoint from {checkpoint_path}')
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
     global_step = checkpoint['global_step']
     return model, optimizer, global_step
 
