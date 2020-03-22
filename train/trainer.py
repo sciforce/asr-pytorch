@@ -102,7 +102,7 @@ def do_train(train_data, val_data, device, n_outputs,
                                            max_norm=train_params.clip_grad_thresh)
             optimizer.step()
             if global_step % train_params.val_step == 0 and global_step > 0:
-                val_loss = validate(model, val_loader, device, loss_fn)
+                val_loss = validate(model, val_loader, device)
                 save_checkpoint(model, optimizer, global_step,
                                 str(Path(checkpoint_dir) / f'checkpoint_{global_step}'))
             pbar.set_description('Step {}: loss {:2.4f}, val_loss {:2.4f}'
