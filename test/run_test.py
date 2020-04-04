@@ -25,7 +25,7 @@ def run_test(test_data, device, n_outputs,
     for batch in pbar:
         x, x_lengths, targets, _ = [x.to(device) for x in batch]
         partial_targets = torch.full((x.size(0), 1), SOS_ID, device=device)
-        partial_target_lengths = torch.ones_((x.size(0),), device=device, dtype=torch.long)
+        partial_target_lengths = torch.ones((x.size(0),), device=device, dtype=torch.long)
         outputs = model.inference(x, x_lengths, partial_targets, partial_target_lengths, eos=EOS_ID)
         distances.append(edit_distance(outputs, targets, EOS_ID).detach())
     distances = torch.cat(distances)
