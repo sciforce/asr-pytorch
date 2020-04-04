@@ -50,6 +50,15 @@ def get_collate_fn(max_len_src=None, max_len_tgt=None):
     return collate_fn
 
 
+def get_loader(data, sample_rate, batch_size, shuffle,
+               max_len_src, max_len_tgt):
+    dataset = SpeechDataset(data, sample_rate)
+    loader = torch.utils.data.DataLoader(dataset, batch_size, shuffle,
+                                         collate_fn=get_collate_fn(max_len_src, max_len_tgt))
+    return loader
+
+
+
 def load_dataset(data_path, subset='train'):
     filename = str(Path(data_path) / f'{subset}.tsv')
     logger.info(f'Reading data from {filename}')

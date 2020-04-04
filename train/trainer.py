@@ -4,7 +4,7 @@ from tqdm.auto import tqdm
 
 from utils.config_utils import read_model_config, read_train_config
 from model.asr_model import ASRTransformerModel
-from utils.dataset_utils import SpeechDataset, get_collate_fn, load_dataset
+from utils.dataset_utils import get_loader, load_dataset
 from utils.logger import get_logger
 from utils.ipa_encoder import IPAEncoder
 from utils.model_utils import get_mask_from_lengths
@@ -59,14 +59,6 @@ def get_model(model_params, n_outputs, device):
     return model
 
 
-def get_loader(data, sample_rate, batch_size, shuffle,
-               max_len_src, max_len_tgt):
-    dataset = SpeechDataset(data, sample_rate)
-    loader = torch.utils.data.DataLoader(dataset, batch_size, shuffle,
-                                         collate_fn=get_collate_fn(max_len_src, max_len_tgt))
-    return loader
-
-
 def do_train(train_data, val_data, device, n_outputs,
              checkpoint_dir, start_checkpoint):
     model_params = read_model_config(checkpoint_dir)
@@ -109,6 +101,8 @@ def do_train(train_data, val_data, device, n_outputs,
                                  .format(global_step, loss.item(), val_loss or 0.0))
             global_step += 1
         epoch += 1
+        save_checkpoint(model, optimizer, global_step,
+                        str(Path(checkpoint_dir) / f'checkpoint_{global_step}'))
 
 
 if __name__ == '__main__':
