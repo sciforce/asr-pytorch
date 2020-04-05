@@ -12,7 +12,7 @@ logger = get_logger('asr.train')
 
 
 def run_test(test_data, device, n_outputs,
-             checkpoint_path, test_batch_size):
+             checkpoint_path, test_batch_size, max_batches_count):
     checkpoint_dir = Path(checkpoint_path).parents[1]
     model_params = read_model_config(checkpoint_dir)
     test_loader = get_loader(test_data, model_params.sample_rate, test_batch_size,
@@ -22,7 +22,9 @@ def run_test(test_data, device, n_outputs,
     model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
     pbar = tqdm(test_loader)
     distances = []
-    for batch in pbar:
+    for i, batch in enumerate(pbar):
+        if i >= max_batches_count:
+            break
         x, x_lengths, targets, _ = [x.to(device) for x in batch]
         partial_targets = torch.full((x.size(0), 1), SOS_ID, device=device, dtype=torch.long)
         partial_target_lengths = torch.ones((x.size(0),), device=device, dtype=torch.long)
@@ -43,8 +45,10 @@ if __name__ == '__main__':
                         help='Test batch size')
     parser.add_argument('--subset', default='test', choices=['train', 'dev', 'test'],
                         help='Dataset on which to run test.')
+    parser.add_argument('--max_batches_count', type=int, default=None,
+                        help='Maximal batches count to limit the test.')
     args = parser.parse_args()
-    test_data = load_dataset(Path(args.data_dir), subset=args.subset)
+    test_data = load_dataset(Path(args.data_dir), subset=args.subset, max_batches_count=args.max_batches_count)
     if torch.cuda.is_available():
         device = 'cuda'
         logger.debug('Using CUDA')
