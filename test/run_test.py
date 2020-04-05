@@ -12,7 +12,7 @@ logger = get_logger('asr.train')
 
 
 def run_test(test_data, device, n_outputs,
-             checkpoint_path, test_batch_size, max_batches_count):
+             checkpoint_path, test_batch_size, max_batches_count=None):
     checkpoint_dir = Path(checkpoint_path).parents[1]
     model_params = read_model_config(checkpoint_dir)
     test_loader = get_loader(test_data, model_params.sample_rate, test_batch_size,
@@ -23,7 +23,7 @@ def run_test(test_data, device, n_outputs,
     pbar = tqdm(test_loader)
     distances = []
     for i, batch in enumerate(pbar):
-        if i >= max_batches_count:
+        if max_batches_count is not None and i >= max_batches_count:
             break
         x, x_lengths, targets, _ = [x.to(device) for x in batch]
         partial_targets = torch.full((x.size(0), 1), SOS_ID, device=device, dtype=torch.long)
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_batches_count', type=int, default=None,
                         help='Maximal batches count to limit the test.')
     args = parser.parse_args()
-    test_data = load_dataset(Path(args.data_dir), subset=args.subset, max_batches_count=args.max_batches_count)
+    test_data = load_dataset(Path(args.data_dir), subset=args.subset)
     if torch.cuda.is_available():
         device = 'cuda'
         logger.debug('Using CUDA')
@@ -57,5 +57,5 @@ if __name__ == '__main__':
 
     encoder = IPAEncoder(args.data_dir)
     PER = run_test(test_data, device, len(encoder.vocab),
-                   args.checkpoint, args.batch_size)
+                   args.checkpoint, args.batch_size, args.max_batches_count)
     logger.info(f'Average PER is {PER}. {len(test_data)} samples tested.')
