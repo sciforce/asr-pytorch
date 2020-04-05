@@ -4,18 +4,14 @@ from utils.model_utils import get_mask_from_lengths
 
 
 class ASRTransformerModel(torch.nn.Module):
-    def __init__(self, params, n_outputs, max_len_src=5000, max_len_tgt=100):
+    def __init__(self, params, n_outputs):
         """
         Args:
         params: ModelParams named tuple
         n_outputs: vocabulary size or binary features count
-        max_len_src: maximal source sequence length, samples
-        max_tgt_len: maximal target sequence lenght, characters
         """
         super(ASRTransformerModel, self).__init__()
         self.params = params
-        self.max_len_src = max_len_src
-        self.max_len_tgt = max_len_tgt
         self.n_outputs = n_outputs
         self.mfcc = MFCCLayer(params.sample_rate, params.n_mfcc,
                               params.n_fft, params.hop_length,
@@ -25,7 +21,7 @@ class ASRTransformerModel(torch.nn.Module):
             num_features *= 3
         if self.params.positional_encoding:
             self.positional_encoder = PositionalEncoding(params.embedding_dim, params.dropout,
-                                                         max_len_src)
+                                                         params.max_src_len)
         if params.n_convolutions > 0:
             self.inputs_encoder = InputsEncoder(num_features, params.embedding_dim,
                                                 params.kernel_size, params.stride,
@@ -53,7 +49,7 @@ class ASRTransformerModel(torch.nn.Module):
 
     def _run_encoder(self, x, x_lengths):
         features, feat_lengths = self.mfcc(x, x_lengths)
-        max_len_src = self.max_len_src
+        max_len_src = self.params.max_src_len
         if self.params.n_convolutions > 0:
             features, feat_lengths, max_len_src = self.inputs_encoder(features, feat_lengths, max_len_src)
         max_len_src = min(max_len_src, features.size(-1))
@@ -79,7 +75,7 @@ class ASRTransformerModel(torch.nn.Module):
         Returns:
         outputs: tensor of size [max_target_sequence_length x batch x target_dim]
         """
-        max_len_tgt = min(self.max_len_tgt, targets.size(0))
+        max_len_tgt = min(self.params.max_tgt_len, targets.size(0))
         tgt_key_padding_mask = get_mask_from_lengths(target_lengths, max_len=max_len_tgt)
         tgt_mask = self._generate_square_subsequent_mask(targets.size(0)).to(targets.device)
         output = self.transformer_decoder(targets, memory, tgt_mask=tgt_mask,
@@ -127,7 +123,7 @@ class ASRTransformerModel(torch.nn.Module):
         partial_targets.transpose_(0, 1)
         max_len = partial_target_lengths.max()
         memory, memory_mask, memory_key_padding_mask = self._run_encoder(x, x_lengths)
-        for _ in range(max_len, self.max_len_tgt):
+        for _ in range(max_len, self.params.max_tgt_len):
             output = self._decoder_step(memory, partial_targets, partial_target_lengths,
                                         memory_mask, memory_key_padding_mask)
             output = torch.argmax(output, dim=-1)

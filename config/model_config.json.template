@@ -15,6 +15,6 @@
     "dim_feedforward": 512,
     "dropout": 0.1,
     "positional_encoding": true,
-    "max_src_len": null,
-    "max_tgt_len": null
+    "max_src_len": 5000,
+    "max_tgt_len": 200
 }

@@ -88,7 +88,7 @@ def do_train(train_data, val_data, device, n_outputs,
             optimizer.zero_grad()
             x, x_lengths, targets, target_lengths = [x.to(device) for x in batch]
             outputs = model(x, x_lengths, targets, target_lengths)
-            loss = get_loss(outputs, targets, target_lengths, model_params.max_tgt_len)
+            loss = get_loss(outputs, targets, target_lengths)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(),
                                            max_norm=train_params.clip_grad_thresh)
