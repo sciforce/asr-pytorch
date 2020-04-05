@@ -18,6 +18,8 @@ def edit_distance(outputs, targets, eos_id=EOS_ID,
     batch_size = targets.size(0)
     D = torch.zeros((batch_size, max_output_len, max_target_len),
                     device=outputs.device)
+    D[:, 0, 0] = torch.where(outputs[:, 0] == targets[:, 0], torch.full((batch_size,), 0., device=outputs.device),
+                             torch.full((batch_size,), w_sub, device=outputs.device))
     D[:, 1:, 0] = (torch.arange(1, max_output_len)
                    .unsqueeze(0)
                    .repeat(batch_size, 1)
@@ -41,7 +43,7 @@ def edit_distance(outputs, targets, eos_id=EOS_ID,
     index_vector = (index_vector[:, 0] * max_output_len * max_target_len
                     + index_vector[:, 1] * max_target_len
                     + index_vector[:, 2])
-    edit_distances = D.take(index_vector) / target_last_inds
+    edit_distances = D.take(index_vector) / (target_last_inds + 1)
     return edit_distances
 
 
@@ -52,7 +54,7 @@ if __name__ == '__main__':
     for c in x + y:
         if c not in vocab:
             vocab[c] = len(vocab)
-    x = torch.Tensor([SOS_ID] + [vocab[c] for c in x] + [EOS_ID, EOS_ID]).unsqueeze(0)
-    y = torch.Tensor([SOS_ID] + [vocab[c] for c in y] + [EOS_ID, EOS_ID, EOS_ID]).unsqueeze(0)
+    x = torch.Tensor([vocab[c] for c in x] + [EOS_ID, EOS_ID]).unsqueeze(0)
+    y = torch.Tensor([vocab[c] for c in y] + [EOS_ID, EOS_ID, EOS_ID]).unsqueeze(0)
     d = edit_distance(x, y)
     print(f'edit distance is {d}')
