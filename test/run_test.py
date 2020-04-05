@@ -24,7 +24,7 @@ def run_test(test_data, device, n_outputs,
     distances = []
     for batch in pbar:
         x, x_lengths, targets, _ = [x.to(device) for x in batch]
-        partial_targets = torch.full((x.size(0), 1), SOS_ID, device=device)
+        partial_targets = torch.full((x.size(0), 1), SOS_ID, device=device, dtype=torch.long)
         partial_target_lengths = torch.ones((x.size(0),), device=device, dtype=torch.long)
         outputs = model.inference(x, x_lengths, partial_targets, partial_target_lengths, eos=EOS_ID)
         distances.append(edit_distance(outputs, targets, EOS_ID).detach())
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=64,
                         help='Test batch size')
     args = parser.parse_args()
-    test_data = load_dataset(Path(args.data_dir), subset='dev')
+    test_data = load_dataset(Path(args.data_dir), subset='train')
     if torch.cuda.is_available():
         device = 'cuda'
         logger.debug('Using CUDA')

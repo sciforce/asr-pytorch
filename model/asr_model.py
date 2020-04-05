@@ -15,7 +15,7 @@ class ASRTransformerModel(torch.nn.Module):
         super(ASRTransformerModel, self).__init__()
         self.params = params
         self.max_len_src = max_len_src
-        self.max_len_tgt = max_len_src
+        self.max_len_tgt = max_len_tgt
         self.n_outputs = n_outputs
         self.mfcc = MFCCLayer(params.sample_rate, params.n_mfcc,
                               params.n_fft, params.hop_length,
@@ -95,7 +95,7 @@ class ASRTransformerModel(torch.nn.Module):
         Args:
         x: input waveforms, tensor of size [batch x max_samples_count]
         x_lengths: number of samples in the inputs, tensor of size [batch]
-        targets: target embeddings, tensor of size [batch x max_target_sequence_length x target_dim]
+        targets: target embeddings, tensor of size [batch x max_target_sequence_length]
         target_lengths: lengths of target sequences, tensor of size [batch]
         Returns:
         outputs: tensor of size [batch x max_target_sequence_length x target_dim]
@@ -114,12 +114,14 @@ class ASRTransformerModel(torch.nn.Module):
         Args:
         x: input waveforms, tensor of size [batch x max_samples_count]
         x_lengths: number of samples in the inputs, tensor of size [batch]
-        partial targets: begginings of output sequence, tensor of size [batch x max_partial_target_sequence_length x target_dim]
+        partial targets: begginings of output sequence, tensor of size [batch x max_partial_target_sequence_length]
         partial_target_lengths: lengths of partial target sequences, tensor of size [batch]
         eos: end-of-sequence id
         """
         # TODO: implement beam search decoder
         # TODO: implement binary features decoder
+
+        partial_targets = self.embedding_layer(partial_targets)
 
         # Partial targets: batch x time x target_dim -> time x batch x target_dim
         partial_targets.transpose_(0, 1)
@@ -128,12 +130,9 @@ class ASRTransformerModel(torch.nn.Module):
         for _ in range(max_len, self.max_len_tgt):
             output = self._decoder_step(memory, partial_targets, partial_target_lengths,
                                         memory_mask, memory_key_padding_mask)
-            out = output[-1, ...]
-            out = torch.nn.functional.one_hot(torch.argmax(out, dim=-1),
-                                              num_classses=self.n_outputs).unsqueeze(0)
-            if eos is not None and (out == eos).all():
+            output = torch.argmax(output, dim=-1)
+            if eos is not None and (output[-1, ...] == eos).all():
                 break
-            partial_targets = torch.cat((partial_targets, out.unsqueeze(0)), dim=0)
-        # Output: time x batch x target_dim -> batch x time x target_dim
-        output.transpose_(0, 1)
+            out = self.embedding_layer(output)
+            partial_targets = torch.cat((partial_targets[:1, ...], out.transpose(0, 1).detach()), dim=0).detach()
         return output
