@@ -18,6 +18,7 @@ class IPAEncoder:
         else:
             self.logger = get_logger('root')
         self.vocab = {SOS: SOS_ID, EOS: EOS_ID}
+        self.reverse_vocab = None
         self.load_vocab()
 
     def load_vocab(self):
@@ -47,10 +48,16 @@ class IPAEncoder:
                 res.append(self.vocab[phone])
         return res
 
+    def get_reverse_vocab(self):
+        if self.reverse_vocab is None and self.vocab is not None:
+            self.reverse_vocab = {v: k for k, v in self.vocab.items()}
+        return self.reverse_vocab
+
     def decode(self, ids):
         res = []
+        reverse_vocab = self.get_reverse_vocab()
         for phone_id in ids:
-            res.append(self.vocab[phone_id])
+            res.append(reverse_vocab[phone_id])
             if phone_id == EOS_ID:
                 break
         return res

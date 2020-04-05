@@ -12,7 +12,8 @@ logger = get_logger('asr.train')
 
 
 def run_test(test_data, device, n_outputs,
-             checkpoint_path, test_batch_size, max_batches_count=None):
+             checkpoint_path, test_batch_size, max_batches_count=None,
+             encoder=None):
     checkpoint_dir = Path(checkpoint_path).parents[1]
     model_params = read_model_config(checkpoint_dir)
     test_loader = get_loader(test_data, model_params.sample_rate, test_batch_size,
@@ -30,6 +31,11 @@ def run_test(test_data, device, n_outputs,
         partial_target_lengths = torch.ones((x.size(0),), device=device, dtype=torch.long)
         outputs = model.inference(x, x_lengths, partial_targets, partial_target_lengths, eos=EOS_ID)
         distances.append(edit_distance(outputs, targets[:, 1:], EOS_ID).detach())
+        if encoder is not None:
+            for i in range(x.size(0)):
+                ipa_outputs = encoder.decode(outputs[i, ...].detach().cpu().numpy())
+                ipa_targets = encoder.decode(targets[i, 1:].detach().cpu().numpy())
+                logger.debug(f'Outputs: {ipa_outputs}\nTargets: {ipa_targets}\n')
     distances = torch.cat(distances)
     return distances.mean().cpu().numpy()
 
@@ -47,6 +53,8 @@ if __name__ == '__main__':
                         help='Dataset on which to run test.')
     parser.add_argument('--max_batches_count', type=int, default=None,
                         help='Maximal batches count to limit the test.')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Output predictions and targets.')
     args = parser.parse_args()
     test_data = load_dataset(Path(args.data_dir), subset=args.subset)
     if torch.cuda.is_available():
@@ -57,5 +65,6 @@ if __name__ == '__main__':
 
     encoder = IPAEncoder(args.data_dir)
     PER = run_test(test_data, device, len(encoder.vocab),
-                   args.checkpoint, args.batch_size, args.max_batches_count)
+                   args.checkpoint, args.batch_size, args.max_batches_count,
+                   encoder if args.verbose else None)
     logger.info(f'Average PER is {PER}. {len(test_data)} samples tested.')
