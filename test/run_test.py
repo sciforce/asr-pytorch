@@ -41,8 +41,10 @@ if __name__ == '__main__':
                         help='Checkpoint to test.')
     parser.add_argument('--batch_size', type=int, default=64,
                         help='Test batch size')
+    parser.add_argument('--subset', default='test', choices=['train', 'dev', 'test'],
+                        help='Dataset on which to run test.')
     args = parser.parse_args()
-    test_data = load_dataset(Path(args.data_dir), subset='train')
+    test_data = load_dataset(Path(args.data_dir), subset=args.subset)
     if torch.cuda.is_available():
         device = 'cuda'
         logger.debug('Using CUDA')
