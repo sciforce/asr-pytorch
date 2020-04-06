@@ -22,6 +22,8 @@ class ASRTransformerModel(torch.nn.Module):
         if self.params.positional_encoding:
             self.positional_encoder = PositionalEncoding(params.embedding_dim, params.dropout,
                                                          params.max_src_len)
+            self.positional_encoder_tgt = PositionalEncoding(params.embedding_dim, params.dropout,
+                                                             params.max_tgt_len)
         if params.n_convolutions > 0:
             self.inputs_encoder = InputsEncoder(num_features, params.embedding_dim,
                                                 params.kernel_size, params.stride,
@@ -76,6 +78,8 @@ class ASRTransformerModel(torch.nn.Module):
         outputs: tensor of size [max_target_sequence_length x batch x target_dim]
         """
         max_len_tgt = min(self.params.max_tgt_len, targets.size(0))
+        if self.params.positional_encoding:
+            targets = self.positional_encoder_tgt(targets)
         tgt_key_padding_mask = get_mask_from_lengths(target_lengths, max_len=max_len_tgt)
         tgt_mask = self._generate_square_subsequent_mask(targets.size(0)).to(targets.device)
         output = self.transformer_decoder(targets, memory, tgt_mask=tgt_mask,
