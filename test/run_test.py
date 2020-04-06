@@ -14,7 +14,7 @@ logger = get_logger('asr.train')
 def run_test(test_data, device, n_outputs,
              checkpoint_path, test_batch_size, max_batches_count=None,
              encoder=None):
-    checkpoint_dir = Path(checkpoint_path).parents[1]
+    checkpoint_dir = Path(checkpoint_path).parents[0]
     model_params = read_model_config(checkpoint_dir)
     test_loader = get_loader(test_data, model_params.sample_rate, test_batch_size,
                              False, model_params.max_src_len, model_params.max_tgt_len)
