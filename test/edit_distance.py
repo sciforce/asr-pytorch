@@ -3,12 +3,12 @@ from utils.ipa_encoder import SOS_ID, EOS_ID
 
 
 def get_seq_len(x, eos_id=EOS_ID):
-    mask = x == eos_id
+    mask = x != eos_id
     inds = (torch.arange(x.size(1), device=x.device)
             .unsqueeze(0)
             .repeat(x.size(0), 1))
-    inds.masked_fill_(mask, -1)
-    return inds.max(dim=1).values + 1
+    inds.masked_fill_(mask, x.size(1) + 1)
+    return inds.min(dim=1).values
 
 
 def edit_distance(outputs, targets, eos_id=EOS_ID,

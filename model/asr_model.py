@@ -127,12 +127,15 @@ class ASRTransformerModel(torch.nn.Module):
         partial_targets.transpose_(0, 1)
         max_len = partial_target_lengths.max()
         memory, memory_mask, memory_key_padding_mask = self._run_encoder(x, x_lengths)
+        eos_reached = torch.zeros((x.size(0),), dtype=torch.bool, device=x.device)
         for _ in range(max_len, self.params.max_tgt_len):
             output = self._decoder_step(memory, partial_targets, partial_target_lengths,
                                         memory_mask, memory_key_padding_mask)
             output = torch.argmax(output, dim=-1)
-            if eos is not None and (output[-1, ...] == eos).all():
-                break
+            if eos is not None:
+                eos_reached |= (output[..., -1] == eos)
+                if eos_reached.all():
+                    break
             out = self.embedding_layer(output)
             partial_targets = torch.cat((partial_targets, out.transpose(0, 1).detach()[-1:, ...]), dim=0).detach()
             partial_target_lengths += 1
