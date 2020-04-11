@@ -21,6 +21,7 @@ def run_test(test_data, device, n_outputs,
     model = ASRTransformerModel(model_params, n_outputs).to(device)
     logger.debug(f'Loading checkpoint from {checkpoint_path}')
     model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
+    model.eval()
     pbar = tqdm(test_loader)
     distances = []
     for i, batch in enumerate(pbar):

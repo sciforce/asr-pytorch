@@ -134,5 +134,7 @@ class ASRTransformerModel(torch.nn.Module):
             if eos is not None and (output[-1, ...] == eos).all():
                 break
             out = self.embedding_layer(output)
-            partial_targets = torch.cat((partial_targets[:1, ...], out.transpose(0, 1).detach()), dim=0).detach()
+            partial_targets = torch.cat((partial_targets, out.transpose(0, 1).detach()[-1:, ...]), dim=0).detach()
+            partial_target_lengths += 1
+            max_len += 1
         return output
