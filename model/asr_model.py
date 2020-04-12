@@ -193,13 +193,13 @@ class ASRTransformerModel(torch.nn.Module):
             best_probs = best_probs.gather(dim=1, index=inds)
             best_seq_inds = best_seq_inds.gather(dim=1, index=inds)
 
-            sequence_probs = best_probs.resize(batch_size * beam_size)
+            sequence_probs = best_probs.resize(batch_size * beam_size).detach()
             step_outputs = flat_output_inds.gather(dim=-1, index=best_seq_inds).resize(batch_size * beam_size)
             partial_target_inds = batch_inds + (best_seq_inds // self.n_outputs).reshape((batch_size * beam_size,))
             partial_targets = partial_targets.gather(dim=0, index=(partial_target_inds.unsqueeze(1)
                                                                    .repeat(1, partial_targets.size(1))))
             partial_targets = torch.cat((partial_targets, step_outputs.unsqueeze(1)), dim=1).detach()
-            sequence_finished = sequence_finished.gather(dim=0, index=partial_target_inds)
+            sequence_finished = sequence_finished.gather(dim=0, index=partial_target_inds).detach()
 
             if eos is not None:
                 eos_reached = (partial_targets == eos).any(dim=-1)
