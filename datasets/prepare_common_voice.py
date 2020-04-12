@@ -46,7 +46,7 @@ def collect_data(directory, langs_list=None, subset='train', max_num_files=None)
     return data_files
 
 
-def encode_data(data_files, encoder, **ipa_kwargs):
+def encode_data(data_files, encoder, skip_lang_tags=False, **ipa_kwargs):
     """Encodes targets
     Args:
     data_files: result of `collect_data` call
@@ -58,7 +58,8 @@ def encode_data(data_files, encoder, **ipa_kwargs):
     logger.info('Encoding data')
     encoded_data = list()
     for filename, label, lang in tqdm(data_files):
-        ids = encoder.encode(label, lang, **ipa_kwargs)
+        ids = encoder.encode(label, lang,
+                             skip_lang_tags=skip_lang_tags, **ipa_kwargs)
         encoded_data.append((filename, ids))
     return encoded_data
 
@@ -90,20 +91,26 @@ def main():
                         help='Keep stress and gemination symbols sticked to a phone symbol.')
     parser.add_argument('--not_remove_lang_markers', action='store_false', dest='remove_lang_markers',
                         help='Keep language markers returned by eSpeak-ng.')
+    parser.add_argument('--remove_all_stress', action='store_true',
+                        help='Remove all stress marks')
+    parser.add_argument('--skip_lang_tags', action='store_true',
+                        help='Skip language tags.')
     parser.add_argument('--max_samples_count', type=int, default=None,
                         help='Maximal number of audio files to use. Use all by default.')
     parser.add_argument('--plain_text', action='store_true',
-
                         help='Use characteres as targets instead of IPA.')
     args = parser.parse_args()
 
     encoder = IPAEncoder(args.output_dir, logger)
     data_files = collect_data(args.dataset_dir, args.langs, args.subset, args.max_samples_count)
-    encoded_data = encode_data(data_files, encoder, plain_text=args.plain_text,
+    encoded_data = encode_data(data_files, encoder,
+                               skip_lang_tags=args.skip_lang_tags,
+                               plain_text=args.plain_text,
                                remove_semi_stress=args.remove_semi_stress,
                                split_all_diphthongs=args.split_all_diphthongs,
                                split_stress_gemination=args.split_stress_gemination,
-                               remove_lang_markers=args.remove_lang_markers)
+                               remove_lang_markers=args.remove_lang_markers,
+                               remove_all_stress=args.remove_all_stress)
     serialize_encoded_data(encoded_data, args.output_dir, args.subset)
     encoder.save_vocab()
     with open(Path(args.output_dir) / 'args.json', 'w') as fid:

@@ -34,12 +34,16 @@ class IPAEncoder:
         with open(self.vocab_path, 'w', encoding='utf8') as fid:
             json.dump(self.vocab, fid, ensure_ascii=False)
 
-    def encode(self, s, lang='en', plain_text=False, **kwargs):
+    def encode(self, s, lang='en', plain_text=False,
+               skip_lang_tags=False, **kwargs):
         if plain_text:
             ipa = list(s)
         else:
             ipa = get_ipa(s, lang, **kwargs)
-        ipa = [SOS, f'<{lang}>'] + ipa + [EOS]
+        if skip_lang_tags:
+            ipa = [SOS] + ipa + [EOS]
+        else:
+            ipa = [SOS, f'<{lang}>'] + ipa + [EOS]
         res = list()
         for phone in ipa:
             if len(phone) > 0:
