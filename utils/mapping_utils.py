@@ -17,7 +17,8 @@ def load_binf2phone(filename, vocab=None):
     binf2phone.loc[binf2phone.index==EOS, EOS] = 1
     if vocab is not None:
         # Leave only phonemes from the vocabluary
-        binf2phone = binf2phone[vocab.keys()]
+        vocab_list = sorted([(k, v) for k, v in vocab.items()], key=lambda x: x[1])
+        binf2phone = binf2phone[[x[0] for x in vocab_list]]
     return torch.Tensor(binf2phone.to_numpy())
 
 

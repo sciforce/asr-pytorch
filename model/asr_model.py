@@ -45,11 +45,12 @@ class ASRTransformerModel(torch.nn.Module):
                                                                params.num_decoder_layers)
         self.ipa2binf = None
         self.binf2ipa = None
+        self.binf_map = None
         if params.binf_targets and binf_map is not None:
-            self.embedding_layer = torch.nn.Sequential(LinearNorm(binf_map.size(0), num_features),
-                                                       torch.nn.ReLU())
+            self.embedding_layer = LinearNorm(binf_map.size(0), num_features)
             self.binf2ipa = Binf2IPAMapper(binf_map)
             self.ipa2binf = IPA2BinfMapper(binf_map)
+            self.binf_map = binf_map
         else:
             self.embedding_layer = torch.nn.Embedding(n_outputs, num_features)
         self.projection_layer = LinearNorm(num_features, n_outputs)
@@ -128,9 +129,10 @@ class ASRTransformerModel(torch.nn.Module):
         partial_target_lengths: lengths of partial target sequences, tensor of size [batch]
         eos: end-of-sequence id
         """
-        # TODO: implement binary features decoder
-
-        partial_targets = self.embedding_layer(partial_targets)
+        if self.params.binf_targets:
+            partial_targets = self.embedding_layer(self.ipa2binf(partial_targets))
+        else:
+            partial_targets = self.embedding_layer(partial_targets)
 
         # Partial targets: batch x time x target_dim -> time x batch x target_dim
         partial_targets.transpose_(0, 1)
@@ -140,12 +142,17 @@ class ASRTransformerModel(torch.nn.Module):
         for _ in range(max_len, self.params.max_tgt_len):
             output = self._decoder_step(memory, partial_targets, partial_target_lengths,
                                         memory_mask, memory_key_padding_mask)
+            if self.params.binf_targets:
+                output = self.binf2ipa(output)
             output = torch.argmax(output, dim=-1)
             if eos is not None:
                 eos_reached |= (output[..., -1] == eos)
                 if eos_reached.all():
                     break
-            out = self.embedding_layer(output)
+            if self.params.binf_targets:
+                out = self.embedding_layer(self.ipa2binf(output))
+            else:
+                out = self.embedding_layer(output)
             partial_targets = torch.cat((partial_targets, out.transpose(0, 1).detach()[-1:, ...]), dim=0).detach()
             partial_target_lengths += 1
             max_len += 1
@@ -174,7 +181,8 @@ class ASRTransformerModel(torch.nn.Module):
         batch_size = x.size(0)
         partial_targets = partial_targets.repeat_interleave(beam_size, dim=0)
         sequence_probs = torch.full((batch_size * beam_size,), 1 / beam_size, device=x.device).log()
-        flat_output_inds = (torch.arange(self.n_outputs, device=x.device, dtype=torch.int64)
+        flat_output_inds = (torch.arange(self.n_outputs if self.binf_map is None else self.binf_map.size(1),
+                                         device=x.device, dtype=torch.int64)
                             .repeat(beam_size)
                             .unsqueeze(0)
                             .repeat(batch_size, 1))
@@ -183,7 +191,10 @@ class ASRTransformerModel(torch.nn.Module):
         sequence_finished = torch.zeros((beam_size * batch_size,), dtype=torch.bool, device=x.device)
 
         for _ in range(max_len, self.params.max_tgt_len):
-            decoder_inputs = self.embedding_layer(self.ipa2binf(partial_targets)).transpose(0, 1)
+            if self.params.binf_targets:
+                decoder_inputs = self.embedding_layer(self.ipa2binf(partial_targets)).transpose(0, 1)
+            else:
+                decoder_inputs = self.embedding_layer(partial_targets).transpose(0, 1)
 
             output = self._decoder_step(memory, decoder_inputs, partial_target_lengths,
                                         memory_mask, memory_key_padding_mask)
@@ -193,7 +204,7 @@ class ASRTransformerModel(torch.nn.Module):
                 last_output = torch.softmax(output[:, -1, :], dim=-1).log()
             output = torch.where(sequence_finished.unsqueeze(1), torch.zeros_like(last_output),
                                  last_output)
-            output_probs_rescored = ((output + sequence_probs.unsqueeze(1))
+            output_probs_rescored = ((torch.sigmoid(output).log() + sequence_probs.unsqueeze(1))
                                      .resize(batch_size, last_output.size(-1) * beam_size))     # batch_size x (vocab_size * beam_size)
             best_probs, best_seq_inds = output_probs_rescored.sort(-1, descending=True)
 

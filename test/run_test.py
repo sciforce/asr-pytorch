@@ -37,7 +37,7 @@ def run_test(test_data, device, vocab,
             partial_target_lengths = torch.ones((x.size(0),), device=device, dtype=torch.long)
             if beam_size > 0:
                 outputs = model.inference_beam_search(x, x_lengths, partial_targets, partial_target_lengths,
-                                                    eos=EOS_ID, beam_size=beam_size)
+                                                      eos=EOS_ID, beam_size=beam_size)
                 distances.append(edit_distance(outputs[:, 0, :], targets[:, 1:], EOS_ID).detach())
                 if encoder is not None:
                     for i in range(x.size(0)):
@@ -48,7 +48,7 @@ def run_test(test_data, device, vocab,
                         logger.debug(f'Targets: {ipa_targets}\n\n')
             else:
                 outputs = model.inference(x, x_lengths, partial_targets, partial_target_lengths,
-                                        eos=EOS_ID)
+                                          eos=EOS_ID)
                 distances.append(edit_distance(outputs[:, :], targets[:, 1:], EOS_ID).detach())
                 if encoder is not None:
                     for i in range(x.size(0)):
