@@ -1,10 +1,11 @@
+import torch
 import numpy as np
 import pandas as pd
 from utils.ipa_encoder import SOS, EOS, SOS_ID, EOS_ID
 from utils.ipa_utils import IPAError
 
 
-def load_binf2phone(filename, vocab_list=None):
+def load_binf2phone(filename, vocab=None):
     binf2phone = pd.read_csv(filename, index_col=0)
     binf2phone.insert(SOS_ID, SOS, 0)
     binf2phone.insert(EOS_ID, EOS, 0)
@@ -14,10 +15,10 @@ def load_binf2phone(filename, vocab_list=None):
     binf2phone = pd.concat((binf2phone, bottom_df))
     binf2phone.loc[binf2phone.index==SOS, SOS] = 1
     binf2phone.loc[binf2phone.index==EOS, EOS] = 1
-    if vocab_list is not None:
+    if vocab is not None:
         # Leave only phonemes from the vocabluary
-        binf2phone = binf2phone[vocab_list]
-    return binf2phone
+        binf2phone = binf2phone[vocab.keys()]
+    return torch.Tensor(binf2phone.to_numpy())
 
 
 def ipa2binf(ipa, binf2phone, try_merge_diphtongs=False):

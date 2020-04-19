@@ -1,11 +1,12 @@
 import torch
-from model.layers import MFCCLayer, PositionalEncoding, InputsEncoder, LinearNorm
+from model.layers import *
 from utils.model_utils import get_mask_from_lengths
 
 EPSILON = 1e-7
 
+
 class ASRTransformerModel(torch.nn.Module):
-    def __init__(self, params, n_outputs):
+    def __init__(self, params, n_outputs, binf_map=None):
         """
         Args:
         params: ModelParams named tuple
@@ -42,7 +43,15 @@ class ASRTransformerModel(torch.nn.Module):
                                                                      dropout=params.dropout)
         self.transformer_decoder = torch.nn.TransformerDecoder(transformer_decoder_layer,
                                                                params.num_decoder_layers)
-        self.embedding_layer = torch.nn.Embedding(n_outputs, num_features)
+        self.ipa2binf = None
+        self.binf2ipa = None
+        if params.binf_targets and binf_map is not None:
+            self.embedding_layer = torch.nn.Sequential(LinearNorm(binf_map.size(0), num_features),
+                                                       torch.nn.ReLU())
+            self.binf2ipa = Binf2IPAMapper(binf_map)
+            self.ipa2binf = IPA2BinfMapper(binf_map)
+        else:
+            self.embedding_layer = torch.nn.Embedding(n_outputs, num_features)
         self.projection_layer = LinearNorm(num_features, n_outputs)
 
     def _generate_square_subsequent_mask(self, sz):
@@ -96,7 +105,7 @@ class ASRTransformerModel(torch.nn.Module):
         Args:
         x: input waveforms, tensor of size [batch x max_samples_count]
         x_lengths: number of samples in the inputs, tensor of size [batch]
-        targets: target embeddings, tensor of size [batch x max_target_sequence_length]
+        targets: targets, tensor of size [batch x max_target_sequence_length]
         target_lengths: lengths of target sequences, tensor of size [batch]
         Returns:
         outputs: tensor of size [batch x max_target_sequence_length x target_dim]
@@ -174,14 +183,18 @@ class ASRTransformerModel(torch.nn.Module):
         sequence_finished = torch.zeros((beam_size * batch_size,), dtype=torch.bool, device=x.device)
 
         for _ in range(max_len, self.params.max_tgt_len):
-            decoder_inputs = self.embedding_layer(partial_targets).transpose(0, 1)
+            decoder_inputs = self.embedding_layer(self.ipa2binf(partial_targets)).transpose(0, 1)
 
             output = self._decoder_step(memory, decoder_inputs, partial_target_lengths,
                                         memory_mask, memory_key_padding_mask)
-            output = torch.where(sequence_finished.unsqueeze(1), torch.zeros_like(output[:, -1, :]),
-                                 torch.softmax(output[:, -1, :], dim=-1).log())
+            if self.binf2ipa is not None:
+                last_output = self.binf2ipa(output)[:, -1, :]
+            else:
+                last_output = torch.softmax(output[:, -1, :], dim=-1).log()
+            output = torch.where(sequence_finished.unsqueeze(1), torch.zeros_like(last_output),
+                                 last_output)
             output_probs_rescored = ((output + sequence_probs.unsqueeze(1))
-                                     .resize(batch_size, self.n_outputs * beam_size))     # batch_size x (n_outputs * beam_size)
+                                     .resize(batch_size, last_output.size(-1) * beam_size))     # batch_size x (vocab_size * beam_size)
             best_probs, best_seq_inds = output_probs_rescored.sort(-1, descending=True)
 
             # Get beam_size best unique probability values to avoid identical sequences in the best hypothesis set
@@ -195,7 +208,7 @@ class ASRTransformerModel(torch.nn.Module):
 
             sequence_probs = best_probs.resize(batch_size * beam_size).detach()
             step_outputs = flat_output_inds.gather(dim=-1, index=best_seq_inds).resize(batch_size * beam_size)
-            partial_target_inds = batch_inds + (best_seq_inds // self.n_outputs).reshape((batch_size * beam_size,))
+            partial_target_inds = batch_inds + (best_seq_inds // last_output.size(-1)).reshape((batch_size * beam_size,))
             partial_targets = partial_targets.gather(dim=0, index=(partial_target_inds.unsqueeze(1)
                                                                    .repeat(1, partial_targets.size(1))))
             partial_targets = torch.cat((partial_targets, step_outputs.unsqueeze(1)), dim=1).detach()
