@@ -6,13 +6,15 @@ import librosa
 
 class MFCCLayer(torch.nn.Module):
     def __init__(self, sample_rate, n_mfcc, n_fft, hop_length, use_deltas,
-                 normalize_features):
+                 normalize_features, remove_zeroth_coef):
         super(MFCCLayer, self).__init__()
         self.use_deltas = use_deltas
         self.normalize_features = normalize_features
         self.hop_length = hop_length
         self.n_fft = n_fft
-        self.mfcc = torchaudio.transforms.MFCC(sample_rate, n_mfcc,
+        self.remove_zeroth_coef = remove_zeroth_coef
+        self.mfcc = torchaudio.transforms.MFCC(sample_rate,
+                                               n_mfcc + 1 if remove_zeroth_coef else n_mfcc,
                                                melkwargs={'n_fft': n_fft,
                                                           'hop_length': hop_length})
         if self.use_deltas:
@@ -24,6 +26,8 @@ class MFCCLayer(torch.nn.Module):
 
     def forward(self, signals, lengths):
         mel_features = self.mfcc(signals)
+        if self.remove_zeroth_coef:
+            mel_features = mel_features[:, 1:, :]
         device = lengths.device
         lengths_frames = librosa.samples_to_frames(lengths.cpu().numpy(),
                                                    hop_length=self.hop_length,

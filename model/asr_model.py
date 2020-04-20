@@ -17,7 +17,8 @@ class ASRTransformerModel(torch.nn.Module):
         self.n_outputs = n_outputs
         self.mfcc = MFCCLayer(params.sample_rate, params.n_mfcc,
                               params.n_fft, params.hop_length,
-                              params.use_deltas, params.normalize_features)
+                              params.use_deltas, params.normalize_features,
+                              params.remove_zeroth_coef)
         num_features = params.n_mfcc
         if params.use_deltas:
             num_features *= 3

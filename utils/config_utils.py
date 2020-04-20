@@ -7,6 +7,7 @@ from utils.mapping_utils import load_binf2phone
 
 ModelParams = namedtuple('ModelParams',
                          ['n_mfcc',
+                          'remove_zeroth_coef',
                           'sample_rate',
                           'n_fft',
                           'hop_length',
