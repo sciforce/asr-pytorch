@@ -40,6 +40,9 @@ def collect_data(directory, langs_list=None, subset='train', max_num_files=None)
                 if '.mp3' not in media_name:
                     media_name += '.mp3'
                 filename = lang_dir / 'clips' / media_name
+                if not filename.exists() or filename.stat().st_size == 0:
+                    logger.warning(f'File {str(filename)} not found or corrupted.')
+                    continue
 
                 data_files.append((str(filename), label, lang))
                 if max_num_files is not None and len(data_files) >= max_num_files:
