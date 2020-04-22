@@ -17,6 +17,7 @@ def run_test(test_data, device, vocab,
     checkpoint_dir = Path(checkpoint_path).parents[0]
     model_params = read_model_config(checkpoint_dir)
     binf_map = None
+    n_outputs = len(vocab)
     if model_params.binf_targets:
         binf_map = read_binf_mapping(checkpoint_dir, vocab).to(device)
         n_outputs = binf_map.size(0)
