@@ -25,8 +25,17 @@ def save_checkpoint(model, optimizer, global_step,
 def load_checkpoint(model, optimizer, checkpoint_path):
     logger.debug(f'Loading checkpoint from {checkpoint_path}')
     checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer'])
+    load_optimizer_state = True
+    try:
+        model.load_state_dict(checkpoint['state_dict'])
+    except RuntimeError:
+        model.load_state_dict({k: v for k, v in checkpoint['state_dict'].items()
+                               if 'embedding_layer' not in k and 'projection_layer' not in k},
+                              strict=False)
+        logger.debug('Skipped embedding and projection layers due to vocabulary size mismatch.')
+        load_optimizer_state = False
+    if load_optimizer_state:
+        optimizer.load_state_dict(checkpoint['optimizer'])
     global_step = checkpoint['global_step']
     return model, optimizer, global_step
 
