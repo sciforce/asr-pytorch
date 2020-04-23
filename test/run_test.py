@@ -5,20 +5,25 @@ from test.edit_distance import edit_distance
 from model.asr_model import ASRTransformerModel
 from utils.logger import get_logger
 from utils.ipa_encoder import SOS_ID, EOS_ID, IPAEncoder
-from utils.config_utils import read_model_config
+from utils.config_utils import read_model_config, read_binf_mapping
 from utils.dataset_utils import get_loader, load_dataset
 
 logger = get_logger('asr.train')
 
 
-def run_test(test_data, device, n_outputs,
+def run_test(test_data, device, vocab,
              checkpoint_path, test_batch_size, max_batches_count=None,
              encoder=None, beam_size=3):
     checkpoint_dir = Path(checkpoint_path).parents[0]
     model_params = read_model_config(checkpoint_dir)
+    binf_map = None
+    n_outputs = len(vocab)
+    if model_params.binf_targets:
+        binf_map = read_binf_mapping(checkpoint_dir, vocab).to(device)
+        n_outputs = binf_map.size(0)
     test_loader = get_loader(test_data, model_params.sample_rate, test_batch_size,
                              False, model_params.max_src_len, model_params.max_tgt_len)
-    model = ASRTransformerModel(model_params, n_outputs).to(device)
+    model = ASRTransformerModel(model_params, n_outputs, binf_map).to(device)
     logger.debug(f'Loading checkpoint from {checkpoint_path}')
     model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
     model.eval()
@@ -33,7 +38,7 @@ def run_test(test_data, device, n_outputs,
             partial_target_lengths = torch.ones((x.size(0),), device=device, dtype=torch.long)
             if beam_size > 0:
                 outputs = model.inference_beam_search(x, x_lengths, partial_targets, partial_target_lengths,
-                                                    eos=EOS_ID, beam_size=beam_size)
+                                                      eos=EOS_ID, beam_size=beam_size)
                 distances.append(edit_distance(outputs[:, 0, :], targets[:, 1:], EOS_ID).detach())
                 if encoder is not None:
                     for i in range(x.size(0)):
@@ -44,7 +49,7 @@ def run_test(test_data, device, n_outputs,
                         logger.debug(f'Targets: {ipa_targets}\n\n')
             else:
                 outputs = model.inference(x, x_lengths, partial_targets, partial_target_lengths,
-                                        eos=EOS_ID)
+                                          eos=EOS_ID)
                 distances.append(edit_distance(outputs[:, :], targets[:, 1:], EOS_ID).detach())
                 if encoder is not None:
                     for i in range(x.size(0)):
@@ -81,7 +86,7 @@ if __name__ == '__main__':
         device = 'cpu'
 
     encoder = IPAEncoder(args.data_dir)
-    PER = run_test(test_data, device, len(encoder.vocab),
+    PER = run_test(test_data, device, encoder.vocab,
                    args.checkpoint, args.batch_size, args.max_batches_count,
                    encoder if args.verbose else None, beam_size=args.beam_size)
     logger.info(f'Average PER is {PER}. {len(test_data)} samples tested.')

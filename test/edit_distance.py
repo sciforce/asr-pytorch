@@ -7,7 +7,7 @@ def get_seq_len(x, eos_id=EOS_ID):
     inds = (torch.arange(x.size(1), device=x.device)
             .unsqueeze(0)
             .repeat(x.size(0), 1))
-    inds.masked_fill_(mask, x.size(1) + 1)
+    inds.masked_fill_(mask, x.size(1) - 1)
     return inds.min(dim=1).values
 
 

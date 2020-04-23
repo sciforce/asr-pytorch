@@ -6,13 +6,15 @@ import librosa
 
 class MFCCLayer(torch.nn.Module):
     def __init__(self, sample_rate, n_mfcc, n_fft, hop_length, use_deltas,
-                 normalize_features):
+                 normalize_features, remove_zeroth_coef):
         super(MFCCLayer, self).__init__()
         self.use_deltas = use_deltas
         self.normalize_features = normalize_features
         self.hop_length = hop_length
         self.n_fft = n_fft
-        self.mfcc = torchaudio.transforms.MFCC(sample_rate, n_mfcc,
+        self.remove_zeroth_coef = remove_zeroth_coef
+        self.mfcc = torchaudio.transforms.MFCC(sample_rate,
+                                               n_mfcc + 1 if remove_zeroth_coef else n_mfcc,
                                                melkwargs={'n_fft': n_fft,
                                                           'hop_length': hop_length})
         if self.use_deltas:
@@ -24,6 +26,8 @@ class MFCCLayer(torch.nn.Module):
 
     def forward(self, signals, lengths):
         mel_features = self.mfcc(signals)
+        if self.remove_zeroth_coef:
+            mel_features = mel_features[:, 1:, :]
         device = lengths.device
         lengths_frames = librosa.samples_to_frames(lengths.cpu().numpy(),
                                                    hop_length=self.hop_length,
@@ -135,3 +139,48 @@ class LinearNorm(torch.nn.Module):
 
     def forward(self, x):
         return self.linear_layer(x)
+
+
+class IPA2BinfMapper(torch.nn.Module):
+    def __init__(self, mapping):
+        """
+        mapping (tensor): IPA to binary features mapping of size [binary_features_count x vocabulary_size]
+        """
+        super(IPA2BinfMapper, self).__init__()
+        self.mapping = mapping.transpose(0, 1)
+
+    def forward(self, x):
+        """
+        Maps IPA indexes on binary features.
+        x (tensor): targets, tensor of size [batch x max_target_sequence_length]
+        Returns:
+        (tensor): binary features for the input phone sequence of size [batch x binary_features_count]
+        """
+        batch_size = x.size(0)
+        binf_count = self.mapping.size(1)
+        return (self.mapping
+                .expand(batch_size, -1, -1)
+                .gather(1, x[:, :, None].expand(-1, -1, binf_count)))
+
+
+class Binf2IPAMapper(torch.nn.Module):
+    def __init__(self, mapping):
+        """
+        mapping (tensor): IPA to binary features mapping of size [binary_features_count x vocabulary_size]
+        """
+        super(Binf2IPAMapper, self).__init__()
+        self.mapping = mapping
+
+    def forward(self, x):
+        """
+        Maps binary features logits to IPA probabilities
+        x (tensor): target embeddings, tensor of size [batch x max_target_sequence_length x binary_features_count]
+        Returns:
+        (tensor): log probabilities of phones, size [batch x vocabulary size]
+        """
+        batch_size = x.size(0)
+        binf_probs = torch.sigmoid(x)
+        m = self.mapping[None, :, :].expand(batch_size, -1, -1)
+        phone_log_probs = (binf_probs.log().bmm(m)
+                           + (1 - binf_probs).log().bmm(1 - m))
+        return phone_log_probs

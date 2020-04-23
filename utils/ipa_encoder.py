@@ -1,13 +1,15 @@
 import json
 from pathlib import Path
 from utils.logger import get_logger
-from utils.ipa_utils import get_ipa
+from utils.ipa_utils import get_ipa, IPAError
 
 
 SOS = '<sos>'
 EOS = '<eos>'
 SOS_ID = 0
 EOS_ID = 1
+
+SUSPICIOUS_PHONES = ['??', 'p̪f', 'əl']
 
 
 class IPAEncoder:
@@ -47,6 +49,8 @@ class IPAEncoder:
         res = list()
         for phone in ipa:
             if len(phone) > 0:
+                if phone in SUSPICIOUS_PHONES:
+                    raise IPAError(f'Suspicious phoneme found {phone}')
                 if phone not in self.vocab:
                     self.vocab[phone] = len(self.vocab)
                 res.append(self.vocab[phone])

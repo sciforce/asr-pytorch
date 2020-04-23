@@ -5,6 +5,7 @@ from tqdm.auto import tqdm
 from pathlib import Path
 from utils.ipa_encoder import IPAEncoder
 from utils.logger import get_logger
+from utils.ipa_utils import IPAError
 
 
 logger = get_logger('asr.train')
@@ -39,6 +40,9 @@ def collect_data(directory, langs_list=None, subset='train', max_num_files=None)
                 if '.mp3' not in media_name:
                     media_name += '.mp3'
                 filename = lang_dir / 'clips' / media_name
+                if not filename.exists() or filename.stat().st_size == 0:
+                    logger.warning(f'File {str(filename)} not found or corrupted.')
+                    continue
 
                 data_files.append((str(filename), label, lang))
                 if max_num_files is not None and len(data_files) >= max_num_files:
@@ -57,10 +61,17 @@ def encode_data(data_files, encoder, skip_lang_tags=False, **ipa_kwargs):
     """
     logger.info('Encoding data')
     encoded_data = list()
+    errors_count = 0
     for filename, label, lang in tqdm(data_files):
-        ids = encoder.encode(label, lang,
-                             skip_lang_tags=skip_lang_tags, **ipa_kwargs)
+        try:
+            ids = encoder.encode(label, lang,
+                                 skip_lang_tags=skip_lang_tags, **ipa_kwargs)
+        except IPAError:
+            errors_count += 1
+            continue
         encoded_data.append((filename, ids))
+    if errors_count > 0:
+        logger.warning(f'{errors_count} files skipped due to IPA errors.')
     return encoded_data
 
 

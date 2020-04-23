@@ -2,10 +2,12 @@ import json
 from shutil import copy
 from pathlib import Path
 from collections import namedtuple
+from utils.mapping_utils import load_binf2phone
 
 
 ModelParams = namedtuple('ModelParams',
                          ['n_mfcc',
+                          'remove_zeroth_coef',
                           'sample_rate',
                           'n_fft',
                           'hop_length',
@@ -22,7 +24,8 @@ ModelParams = namedtuple('ModelParams',
                           'dropout',
                           'positional_encoding',
                           'max_src_len',
-                          'max_tgt_len'])
+                          'max_tgt_len',
+                          'binf_targets'])
 TrainParams = namedtuple('TrainParams',
                          ['epochs',
                           'batch_size',
@@ -57,3 +60,15 @@ def read_model_config(model_path):
 def read_train_config(model_path):
     params_dict = read_config_json(model_path, TRAIN_CONFIG_NAME)
     return TrainParams(**params_dict)
+
+
+def read_binf_mapping(model_path, vocab=None):
+    mapping_name = 'binf_map.csv'
+    mapping_path = Path(model_path) / mapping_name
+    if not mapping_path.exists():
+        default_mapping_path = Path(__file__).parents[1] / 'config' / mapping_name
+        if not Path(model_path).exists():
+            Path(model_path).mkdir(parents=True)
+        copy(str(default_mapping_path), str(model_path))
+    mapping = load_binf2phone(mapping_path, vocab)
+    return mapping
