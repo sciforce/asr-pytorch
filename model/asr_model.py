@@ -48,7 +48,7 @@ class ASRTransformerModel(torch.nn.Module):
         self.binf2ipa = None
         self.binf_map = None
         if params.binf_targets and binf_map is not None:
-            self.embedding_layer = LinearNorm(binf_map.size(0), num_features)
+            self.embedding_layer = LinearNorm(binf_map.size(0), num_features, bias=False)
             self.binf2ipa = Binf2IPAMapper(binf_map)
             self.ipa2binf = IPA2BinfMapper(binf_map)
             self.binf_map = binf_map
