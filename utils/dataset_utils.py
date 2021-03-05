@@ -4,6 +4,7 @@ import librosa
 import csv
 import ast
 import warnings
+from multiprocessing import cpu_count
 from pathlib import Path
 from utils.logger import get_logger
 from utils.ipa_encoder import EOS_ID
@@ -54,9 +55,9 @@ def get_loader(data, sample_rate, batch_size, shuffle,
                max_len_src, max_len_tgt):
     dataset = SpeechDataset(data, sample_rate)
     loader = torch.utils.data.DataLoader(dataset, batch_size, shuffle,
-                                         collate_fn=get_collate_fn(max_len_src, max_len_tgt))
+                                         collate_fn=get_collate_fn(max_len_src, max_len_tgt),
+                                         num_workers=cpu_count())
     return loader
-
 
 
 def load_dataset(data_path, subset='train'):

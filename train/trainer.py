@@ -1,6 +1,8 @@
 import torch
 from pathlib import Path
+from datetime import datetime
 from tqdm.auto import tqdm
+from torch.utils.tensorboard.writer import SummaryWriter
 
 from utils.config_utils import read_model_config, read_train_config, read_binf_mapping
 from model.asr_model import ASRTransformerModel
@@ -64,10 +66,17 @@ def get_model(model_params, n_outputs, device, binf_map):
     return model
 
 
+def create_summary_writer(model_dir):
+    dir_name = str(Path(model_dir) / f'logs-{datetime.now().strftime("%Y%m%d-%H%M%S")}')
+    Path(dir_name).mkdir()
+    return SummaryWriter(dir_name)
+
+
 def do_train(train_data, val_data, device, vocab,
              checkpoint_dir, start_checkpoint):
     model_params = read_model_config(checkpoint_dir)
     train_params = read_train_config(checkpoint_dir)
+    summary_writer = create_summary_writer(checkpoint_dir)
     n_outputs = len(vocab)
     binf_map = None
     if model_params.binf_targets:
@@ -107,20 +116,25 @@ def do_train(train_data, val_data, device, vocab,
                 targets = binf_mapper(targets)
             outputs = model(x, x_lengths, targets, target_lengths)
             loss = loss_fn(outputs, targets, target_lengths)
+            if binf_mapper is not None:
+                emb_loss = 0.01 * torch.norm(model.embedding_layer.linear_layer.weight, p=1) / binf_map.size(0)
+                loss += emb_loss
             loss.backward()
+            summary_writer.add_scalar('train/loss', loss.item(), global_step=global_step)
             torch.nn.utils.clip_grad_norm_(model.parameters(),
                                            max_norm=train_params.clip_grad_thresh)
             optimizer.step()
             if global_step % train_params.val_step == 0 and global_step > 0:
                 val_loss = validate(model, val_loader, device, binf_mapper=binf_mapper)
+                summary_writer.add_scalar('val/loss', val_loss.item(), global_step=global_step)
                 save_checkpoint(model, optimizer, global_step,
                                 str(Path(checkpoint_dir) / f'checkpoint_{global_step}'))
             pbar.set_description('Step {}: loss {:2.4f}, val_loss {:2.4f}'
                                  .format(global_step, loss.item(), val_loss or 0.0))
             global_step += 1
         epoch += 1
-        save_checkpoint(model, optimizer, global_step,
-                        str(Path(checkpoint_dir) / f'checkpoint_{global_step}'))
+    save_checkpoint(model, optimizer, global_step,
+                    str(Path(checkpoint_dir) / f'checkpoint_{global_step}'))
 
 
 if __name__ == '__main__':

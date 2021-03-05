@@ -6,7 +6,7 @@ Contains recipe for Mozilla Common Voice dataset.
 
 ~~1. Benchmark with edit distance.~~
 
-2. Tensorboard support.
+2. ~~Tensorboard support.~~
 
 3. ~~Beam search.~~ Optimize beam search performance.
 

@@ -1,4 +1,6 @@
-torch==1.4.0
-torchaudio==0.4.0
-librosa==0.7.1
-tqdm==4.40.0
+torch==1.8.0
+torchaudio==0.8.0
+librosa==0.8.0
+tqdm==4.57.0
+tensorboard==2.4.1
+pandas==1.2.3

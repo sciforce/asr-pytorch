@@ -159,7 +159,7 @@ class ASRTransformerModel(torch.nn.Module):
             max_len += 1
         return output
 
-    def inference_beam_search(self, x, x_lengths, partial_targets, partial_target_lengths, eos=None,
+    def inference_beam_search(self, x, x_lengths, partial_targets, partial_target_lengths, eos,
                               beam_size=3):
         """
         Perform decoding of the input sequence using beam search
@@ -171,7 +171,6 @@ class ASRTransformerModel(torch.nn.Module):
         eos: end-of-sequence id
         beam_size: size of the beam
         """
-        # TODO: implement binary features decoder
 
         max_len = partial_target_lengths.max()
         memory, memory_mask, memory_key_padding_mask = self._run_encoder(x, x_lengths)
@@ -180,18 +179,17 @@ class ASRTransformerModel(torch.nn.Module):
         partial_target_lengths = partial_target_lengths.repeat_interleave(beam_size, dim=0)
 
         batch_size = x.size(0)
+        vocab_size = self.n_outputs if self.binf_map is None else self.binf_map.size(1)
         partial_targets = partial_targets.repeat_interleave(beam_size, dim=0)
-        sequence_probs = torch.full((batch_size * beam_size,), 1 / beam_size, device=x.device).log()
-        flat_output_inds = (torch.arange(self.n_outputs if self.binf_map is None else self.binf_map.size(1),
-                                         device=x.device, dtype=torch.int64)
-                            .repeat(beam_size)
-                            .unsqueeze(0)
-                            .repeat(batch_size, 1))
-        batch_inds = torch.arange(start=0, end=batch_size * beam_size, step=beam_size,
-                                  device=x.device).repeat_interleave(beam_size)
-        sequence_finished = torch.zeros((beam_size * batch_size,), dtype=torch.bool, device=x.device)
+        active_sequence_probs = torch.full((batch_size, beam_size), 1 / beam_size, device=x.device).log()
 
-        for _ in range(max_len, self.params.max_tgt_len):
+        final_sequences = torch.full((batch_size, beam_size * 2, self.params.max_tgt_len), eos, device=x.device, dtype=torch.int64)
+        final_seq_count = torch.zeros((batch_size,), device=x.device, dtype=torch.int64)
+        final_seq_scores = torch.full((batch_size, beam_size * 2), -float('inf'), device=x.device)
+
+        is_finished = torch.zeros((batch_size,), dtype=torch.bool, device=x.device)
+
+        for step in range(max_len, self.params.max_tgt_len):
             if self.params.binf_targets:
                 decoder_inputs = self.embedding_layer(self.ipa2binf(partial_targets)).transpose(0, 1)
             else:
@@ -203,34 +201,63 @@ class ASRTransformerModel(torch.nn.Module):
                 last_output = self.binf2ipa(output)[:, -1, :]
             else:
                 last_output = torch.softmax(output[:, -1, :], dim=-1).log()
-            output = torch.where(sequence_finished.unsqueeze(1), torch.zeros_like(last_output),
-                                 last_output)
-            output_probs_rescored = ((torch.sigmoid(output).log() + sequence_probs.unsqueeze(1))
-                                     .resize(batch_size, last_output.size(-1) * beam_size))     # batch_size x (vocab_size * beam_size)
+
+            last_output = last_output.reshape(batch_size, beam_size, vocab_size)
+            output_probs_rescored = ((torch.sigmoid(last_output).log() + active_sequence_probs.unsqueeze(-1))
+                                     .reshape(batch_size, vocab_size * beam_size))     # batch_size x (vocab_size * beam_size)
             best_probs, best_seq_inds = output_probs_rescored.sort(-1, descending=True)
 
-            # Get beam_size best unique probability values to avoid identical sequences in the best hypothesis set
+            # Get beam_size best unique probability values to avoid identical sequences in the best hypotheses set
             unique_probs_mask = torch.cat((torch.ones((best_probs.size(0), 1), dtype=torch.bool, device=x.device),
-                                           (best_probs[:, :-1] - best_probs[:, 1:]) >= EPSILON), dim=-1)
+                                           ((best_probs[:, :-1] - best_probs[:, 1:]) >= EPSILON)
+                                            | torch.isinf(best_probs[:, :-1])),
+                                           dim=-1)
             unique_probs_mask = torch.where(unique_probs_mask.cumsum(dim=1) > beam_size,
                                             torch.zeros_like(unique_probs_mask), unique_probs_mask)
-            inds = unique_probs_mask.nonzero(as_tuple=True)[1].resize(batch_size, beam_size)
-            best_probs = best_probs.gather(dim=1, index=inds)
+            inds = unique_probs_mask.nonzero(as_tuple=True)[1].reshape(batch_size, beam_size)
+            active_sequence_probs = best_probs.gather(dim=1, index=inds)
             best_seq_inds = best_seq_inds.gather(dim=1, index=inds)
 
-            sequence_probs = best_probs.resize(batch_size * beam_size).detach()
-            step_outputs = flat_output_inds.gather(dim=-1, index=best_seq_inds).resize(batch_size * beam_size)
-            partial_target_inds = batch_inds + (best_seq_inds // last_output.size(-1)).reshape((batch_size * beam_size,))
-            partial_targets = partial_targets.gather(dim=0, index=(partial_target_inds.unsqueeze(1)
-                                                                   .repeat(1, partial_targets.size(1))))
-            partial_targets = torch.cat((partial_targets, step_outputs.unsqueeze(1)), dim=1).detach()
-            sequence_finished = sequence_finished.gather(dim=0, index=partial_target_inds).detach()
+            step_outputs = best_seq_inds % vocab_size
+            partial_target_inds = best_seq_inds // vocab_size
+            partial_targets = (partial_targets
+                               .reshape(batch_size, beam_size, -1)
+                               .gather(dim=1, index=partial_target_inds.unsqueeze(-1).repeat(1, 1, partial_targets.size(-1))))
+            partial_targets = torch.cat((partial_targets, step_outputs.unsqueeze(-1)), dim=-1)
 
-            if eos is not None:
-                eos_reached = (partial_targets == eos).any(dim=-1)
-                sequence_finished = sequence_finished | (partial_targets[:, -1] == eos)
-                if eos_reached.all():
-                    break
+            eos_reached = step_outputs == eos
+            eos_count = eos_reached.sum(dim=-1)
+            if torch.any(eos_count > 0):    # at least one hypothesis in the batch has eos
+                # Move hypotheses with EOS symbol to a set of final hypotheses
+                eos_inds = eos_reached.nonzero(as_tuple=True)
+                final_seq_target_beam_inds = (eos_reached.cumsum(dim=-1) + final_seq_count.unsqueeze(-1) - 1)[eos_reached]
+                final_sequences[eos_inds[0], final_seq_target_beam_inds, :step + 1] = partial_targets[eos_inds[0], eos_inds[1], :]
+
+                # Assign normalized scores to the final hypotheses
+                final_seq_scores[eos_inds[0], final_seq_target_beam_inds] = active_sequence_probs[eos_inds[0], eos_inds[1]] / step
+                final_seq_count += eos_count
+
+                # Sort final hypotheses
+                final_seq_scores, final_seq_inds = torch.sort(final_seq_scores, descending=True, dim=-1)
+                final_sequences = final_sequences.gather(dim=1,
+                    index=final_seq_inds.unsqueeze(-1).repeat(1, 1, final_sequences.size(-1)))
+
+                # keep only beam_size hypotheses
+                final_seq_count[final_seq_count > beam_size] = beam_size
+                invalid_scores = (torch.arange(final_sequences.size(1), device=final_sequences.device).repeat(batch_size, 1)
+                                  >= final_seq_count.unsqueeze(1))
+                final_seq_scores[invalid_scores] = -float('inf')
+
+                # Mark signals having beam_size finished hypotheses
+                is_finished = final_seq_count == beam_size
+                # active_sequence_probs[is_finished.nonzero(as_tupe=True)[0], :] = -float('inf')
+
+                # Exclude finished hypotheses from beams
+                active_sequence_probs[eos_reached] = -float('inf')
+            if is_finished.all():
+                break
+            partial_targets = partial_targets.reshape(-1, partial_targets.size(-1))
+
             partial_target_lengths += 1
             max_len += 1
-        return partial_targets[:, 1:].view((batch_size, beam_size, -1))
+        return final_sequences[:, :beam_size, :]
