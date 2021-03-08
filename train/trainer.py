@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
 from datetime import datetime
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from utils.config_utils import read_model_config, read_train_config, read_binf_mapping

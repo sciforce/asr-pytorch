@@ -1,6 +1,6 @@
 import torch
 from pathlib import Path
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from test.edit_distance import edit_distance
 from model.asr_model import ASRTransformerModel
 from utils.logger import get_logger

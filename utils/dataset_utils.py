@@ -56,7 +56,7 @@ def get_loader(data, sample_rate, batch_size, shuffle,
     dataset = SpeechDataset(data, sample_rate)
     loader = torch.utils.data.DataLoader(dataset, batch_size, shuffle,
                                          collate_fn=get_collate_fn(max_len_src, max_len_tgt),
-                                         num_workers=cpu_count())
+                                         num_workers=cpu_count() - 1)
     return loader
 
 
