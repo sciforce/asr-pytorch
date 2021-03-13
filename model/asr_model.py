@@ -260,4 +260,4 @@ class ASRTransformerModel(torch.nn.Module):
 
             partial_target_lengths += 1
             max_len += 1
-        return final_sequences[:, :beam_size, :]
+        return final_sequences[:, :beam_size, 1:]
